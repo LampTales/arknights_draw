@@ -521,6 +521,13 @@ input[type="range"] {
   box-shadow: 3px 3px 0 var(--pink);
 }
 
+.tool.history-previewing {
+  color: #090b0d;
+  background: var(--acid);
+  border-color: var(--black);
+  box-shadow: 3px 3px 0 var(--cyan);
+}
+
 .toolbar-sep { background: #9b9ea3; }
 .check { color: #55595e; font-weight: 700; }
 .check input { accent-color: var(--pink); }

@@ -56,6 +56,7 @@
     tool: "paint",
     painting: false,
     mutationBefore: null,
+    historyPreview: null,
     undo: [],
     redo: []
   };
@@ -359,7 +360,7 @@
     }, 30);
   }
 
-  function drawGrid() {
+  function drawGrid(grid = state.historyPreview?.grid || state.grid) {
     const size = el.gridCanvas.width;
     const cell = size / GRID;
     const cssWidth = el.gridCanvas.getBoundingClientRect().width || size;
@@ -371,7 +372,7 @@
     gridCtx.font = `900 ${cell * 0.48}px Consolas, "Cascadia Mono", monospace`;
     for (let row = 0; row < GRID; row++) {
       for (let col = 0; col < GRID; col++) {
-        const id = state.grid[row * GRID + col];
+        const id = grid[row * GRID + col];
         gridCtx.fillStyle = PALETTE[id - 1];
         gridCtx.fillRect(col * cell, row * cell, cell + 0.2, cell + 0.2);
         if (el.showNumbers.checked) {
@@ -394,17 +395,17 @@
       gridCtx.lineWidth = Math.max(1, backingScale);
       gridCtx.stroke();
     }
-    drawOverview();
+    drawOverview(grid);
   }
 
-  function drawOverview() {
+  function drawOverview(grid = state.historyPreview?.grid || state.grid) {
     const size = el.overviewCanvas.width;
     const cell = size / GRID;
     overviewCtx.clearRect(0, 0, size, size);
     overviewCtx.imageSmoothingEnabled = false;
     for (let row = 0; row < GRID; row++) {
       for (let col = 0; col < GRID; col++) {
-        const id = state.grid[row * GRID + col];
+        const id = grid[row * GRID + col];
         overviewCtx.fillStyle = PALETTE[id - 1];
         overviewCtx.fillRect(col * cell, row * cell, cell, cell);
       }
@@ -458,6 +459,7 @@
   }
 
   function afterGridChange() {
+    clearHistoryPreview(false);
     drawGrid();
     updatePaletteCounts();
     updateHistoryButtons();
@@ -467,6 +469,24 @@
   function updateHistoryButtons() {
     el.undoBtn.disabled = state.undo.length === 0;
     el.redoBtn.disabled = state.redo.length === 0;
+  }
+
+  function showHistoryPreview(kind) {
+    const stack = kind === "undo" ? state.undo : state.redo;
+    const button = kind === "undo" ? el.undoBtn : el.redoBtn;
+    if (!stack.length || button.disabled) return;
+    state.historyPreview = { kind, grid: stack[stack.length - 1] };
+    el.undoBtn.classList.toggle("history-previewing", kind === "undo");
+    el.redoBtn.classList.toggle("history-previewing", kind === "redo");
+    drawGrid();
+  }
+
+  function clearHistoryPreview(redraw = true) {
+    if (!state.historyPreview) return;
+    state.historyPreview = null;
+    el.undoBtn.classList.remove("history-previewing");
+    el.redoBtn.classList.remove("history-previewing");
+    if (redraw) drawGrid();
   }
 
   function undo() {
@@ -961,8 +981,12 @@
     document.querySelectorAll(".tool[data-tool]").forEach(button => button.addEventListener("click", () => setTool(button.dataset.tool)));
     el.undoBtn.addEventListener("click", undo);
     el.redoBtn.addEventListener("click", redo);
-    el.showNumbers.addEventListener("change", drawGrid);
-    el.showGrid.addEventListener("change", drawGrid);
+    el.undoBtn.addEventListener("pointerenter", () => showHistoryPreview("undo"));
+    el.undoBtn.addEventListener("pointerleave", () => clearHistoryPreview());
+    el.redoBtn.addEventListener("pointerenter", () => showHistoryPreview("redo"));
+    el.redoBtn.addEventListener("pointerleave", () => clearHistoryPreview());
+    el.showNumbers.addEventListener("change", () => drawGrid());
+    el.showGrid.addEventListener("change", () => drawGrid());
     el.showOverview.addEventListener("change", syncOverviewVisibility);
     el.replaceBtn.addEventListener("click", replaceColor);
 
@@ -1042,6 +1066,7 @@
       gridResizeObserver.observe(el.gridCanvas);
     }
     window.addEventListener("resize", syncGridCanvasResolution);
+    window.addEventListener("blur", () => clearHistoryPreview());
     window.requestAnimationFrame(syncGridCanvasResolution);
   }
 
