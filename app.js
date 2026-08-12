@@ -17,6 +17,8 @@
   const DARK_IDS = [1, 26, 28, 29, 40];
   const GRID = 24;
   const SOURCE_SIZE = 560;
+  const DEFAULT_DARK_THRESHOLD = 18;
+  const DEFAULT_DOMINANT_THRESHOLD = 36;
   const PREVIEW_INTERVAL = 90;
   const WHEEL_FINAL_DELAY = 140;
   const STORAGE_KEY = "arknights_draw-local-grid-v2";
@@ -30,9 +32,12 @@
     pixelPreviewCanvas: $("pixelPreviewCanvas"), sourceMeta: $("sourceMeta"),
     removeImageBtn: $("removeImageBtn"),
     zoomRange: $("zoomRange"), zoomOut: $("zoomOut"), resetCropBtn: $("resetCropBtn"),
-    fitSubjectBtn: $("fitSubjectBtn"), modeSelect: $("modeSelect"),
+    fitSubjectBtn: $("fitSubjectBtn"), resetParamsBtn: $("resetParamsBtn"), modeSelect: $("modeSelect"),
     contrastRange: $("contrastRange"), contrastOut: $("contrastOut"),
     saturationRange: $("saturationRange"), saturationOut: $("saturationOut"),
+    hybridThresholds: $("hybridThresholds"),
+    darkThresholdRange: $("darkThresholdRange"), darkThresholdOut: $("darkThresholdOut"),
+    dominantThresholdRange: $("dominantThresholdRange"), dominantThresholdOut: $("dominantThresholdOut"),
     generateBtn: $("generateBtn"), gridCanvas: $("gridCanvas"), overviewCanvas: $("overviewCanvas"),
     cellInfo: $("cellInfo"),
     undoBtn: $("undoBtn"), redoBtn: $("redoBtn"), showNumbers: $("showNumbers"),
@@ -268,6 +273,8 @@
     const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
     const result = new Uint8Array(GRID * GRID);
     const mode = el.modeSelect.value;
+    const darkThreshold = Number(el.darkThresholdRange.value) / 100;
+    const dominantThreshold = Number(el.dominantThresholdRange.value) / 100;
 
     for (let row = 0; row < GRID; row++) {
       for (let col = 0; col < GRID; col++) {
@@ -295,8 +302,8 @@
             darkTotal += counts[id];
             if (counts[id] > counts[darkId]) darkId = id;
           });
-          if (darkTotal / total >= 0.18) chosen = darkId;
-          else if (counts[dominantId] / total >= 0.36) chosen = dominantId;
+          if (darkTotal > 0 && darkTotal / total >= darkThreshold) chosen = darkId;
+          else if (counts[dominantId] / total >= dominantThreshold) chosen = dominantId;
         }
         result[row * GRID + col] = chosen;
       }
@@ -833,6 +840,8 @@
         mode: el.modeSelect.value,
         contrast: Number(el.contrastRange.value),
         saturation: Number(el.saturationRange.value),
+        darkThreshold: Number(el.darkThresholdRange.value),
+        dominantThreshold: Number(el.dominantThresholdRange.value),
         showNumbers: el.showNumbers.checked,
         showGrid: el.showGrid.checked,
         showOverview: el.showOverview.checked
@@ -857,10 +866,17 @@
       if (["hybrid", "dominant", "average"].includes(project.settings.mode)) el.modeSelect.value = project.settings.mode;
       if (Number.isFinite(project.settings.contrast)) el.contrastRange.value = String(project.settings.contrast);
       if (Number.isFinite(project.settings.saturation)) el.saturationRange.value = String(project.settings.saturation);
+      el.darkThresholdRange.value = String(Number.isFinite(project.settings.darkThreshold)
+        ? Math.max(0, Math.min(100, project.settings.darkThreshold))
+        : DEFAULT_DARK_THRESHOLD);
+      el.dominantThresholdRange.value = String(Number.isFinite(project.settings.dominantThreshold)
+        ? Math.max(0, Math.min(100, project.settings.dominantThreshold))
+        : DEFAULT_DOMINANT_THRESHOLD);
       el.showNumbers.checked = project.settings.showNumbers !== false;
       el.showGrid.checked = project.settings.showGrid !== false;
       el.showOverview.checked = project.settings.showOverview !== false;
       syncOverviewVisibility();
+      syncHybridThresholdVisibility();
     }
     if (project.selected) selectColor(project.selected);
     syncOutputs();
@@ -1068,6 +1084,24 @@
     el.zoomOut.textContent = `${el.zoomRange.value}%`;
     el.contrastOut.textContent = Number(el.contrastRange.value) > 0 ? `+${el.contrastRange.value}` : el.contrastRange.value;
     el.saturationOut.textContent = Number(el.saturationRange.value) > 0 ? `+${el.saturationRange.value}` : el.saturationRange.value;
+    el.darkThresholdOut.textContent = `${el.darkThresholdRange.value}%`;
+    el.dominantThresholdOut.textContent = `${el.dominantThresholdRange.value}%`;
+  }
+
+  function syncHybridThresholdVisibility() {
+    const visible = el.modeSelect.value === "hybrid";
+    el.hybridThresholds.hidden = !visible;
+    el.hybridThresholds.closest(".control-grid").classList.toggle("show-hybrid-thresholds", visible);
+  }
+
+  function resetImageParameters() {
+    el.contrastRange.value = "0";
+    el.saturationRange.value = "0";
+    el.darkThresholdRange.value = String(DEFAULT_DARK_THRESHOLD);
+    el.dominantThresholdRange.value = String(DEFAULT_DOMINANT_THRESHOLD);
+    syncOutputs();
+    schedulePixelPreview();
+    forcePixelPreview();
   }
 
   function syncOverviewVisibility() {
@@ -1127,9 +1161,14 @@
     el.contrastRange.addEventListener("change", forcePixelPreview);
     el.saturationRange.addEventListener("input", () => { syncOutputs(); schedulePixelPreview(); });
     el.saturationRange.addEventListener("change", forcePixelPreview);
-    el.modeSelect.addEventListener("change", () => { schedulePixelPreview(); forcePixelPreview(); });
+    el.darkThresholdRange.addEventListener("input", () => { syncOutputs(); schedulePixelPreview(); });
+    el.darkThresholdRange.addEventListener("change", forcePixelPreview);
+    el.dominantThresholdRange.addEventListener("input", () => { syncOutputs(); schedulePixelPreview(); });
+    el.dominantThresholdRange.addEventListener("change", forcePixelPreview);
+    el.modeSelect.addEventListener("change", () => { syncHybridThresholdVisibility(); schedulePixelPreview(); forcePixelPreview(); });
     el.resetCropBtn.addEventListener("click", () => { resetCrop(false); forcePixelPreview(); });
     el.fitSubjectBtn.addEventListener("click", () => { resetCrop(!state.fitFull); forcePixelPreview(); });
+    el.resetParamsBtn.addEventListener("click", resetImageParameters);
     el.removeImageBtn.addEventListener("click", event => { event.stopPropagation(); removeSourceImage(); });
     el.generateBtn.addEventListener("click", buildGridFromImage);
 
@@ -1214,6 +1253,7 @@
     renderExportHistory();
     bindEvents();
     syncOutputs();
+    syncHybridThresholdVisibility();
     syncPngExportMode();
     syncOverviewVisibility();
     drawGrid();

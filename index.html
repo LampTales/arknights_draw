@@ -81,6 +81,7 @@
           </label>
           <button id="resetCropBtn" class="button secondary">重置位置</button>
           <button id="fitSubjectBtn" class="button secondary" title="缩小到完整显示图片，空白区域会自动填充">完整显示</button>
+          <button id="resetParamsBtn" class="button secondary" title="重置对比度、饱和度和均衡模式阈值">重置参数</button>
 
           <label class="control">
             <span>转换方式</span>
@@ -98,6 +99,16 @@
             <span>饱和度 <output id="saturationOut">0</output></span>
             <input id="saturationRange" type="range" min="-50" max="50" value="0">
           </label>
+          <div id="hybridThresholds" class="hybrid-thresholds">
+            <label class="control">
+              <span>深色占比阈值 <output id="darkThresholdOut">18%</output></span>
+              <input id="darkThresholdRange" type="range" min="0" max="100" value="18">
+            </label>
+            <label class="control">
+              <span>主色占比阈值 <output id="dominantThresholdOut">36%</output></span>
+              <input id="dominantThresholdRange" type="range" min="0" max="100" value="36">
+            </label>
+          </div>
           <button id="generateBtn" class="button primary full" disabled>生成 24×24 初稿</button>
         </div>
       </article>

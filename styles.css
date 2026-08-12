@@ -803,7 +803,7 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
 
 .source-panel {
   display: grid;
-  grid-template-rows: auto 220px;
+  grid-template-rows: auto minmax(220px, auto);
   gap: 14px 18px;
   align-items: stretch;
 }
@@ -927,6 +927,13 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.source-panel > .control-grid .hybrid-thresholds {
+  display: grid;
+  grid-column: 1 / 3;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .source-panel > .control-grid > #generateBtn {
   grid-column: 3;
   width: 100%;
@@ -1039,6 +1046,10 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   .source-panel > .source-previews #pixelPreviewCanvas { width: 190px; height: 190px; }
 }
 
+.source-panel > .control-grid:not(.show-hybrid-thresholds) > #generateBtn {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 1080px) {
   .source-panel { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
   .source-panel > .drop-zone,
@@ -1056,6 +1067,12 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   .source-panel > .source-previews #sourceCanvas,
   .source-panel > .source-previews #pixelPreviewCanvas { width: 100%; height: auto; }
   .source-panel > .control-grid { grid-template-columns: 1fr 1fr; }
+  .source-panel > .control-grid .hybrid-thresholds {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .source-panel > .control-grid > #resetParamsBtn { grid-column: 1 / -1; }
   .source-panel > .control-grid > #generateBtn { grid-column: 1 / -1; }
   .workbench-row .palette-panel { padding-left: 12px; padding-right: 12px; }
 }
