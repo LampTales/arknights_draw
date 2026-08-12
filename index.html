@@ -61,11 +61,17 @@
           <small>PNG、JPG、WEBP；也可以直接粘贴截图</small>
         </label>
 
-        <div id="cropWrap" class="crop-wrap" hidden>
-          <canvas id="sourceCanvas" width="560" height="560" aria-label="原图裁剪预览"></canvas>
-          <div class="crop-frame" aria-hidden="true"></div>
-          <span class="crop-tip">拖动定位 · 滚轮缩放</span>
-          <button id="removeImageBtn" class="remove-image" type="button" aria-label="移除当前图片" title="移除当前图片">×</button>
+        <div id="sourcePreviews" class="source-previews" hidden>
+          <div id="cropWrap" class="crop-wrap">
+            <canvas id="sourceCanvas" width="560" height="560" aria-label="原图裁剪预览"></canvas>
+            <div class="crop-frame" aria-hidden="true"></div>
+            <span class="crop-tip">拖动定位 · 滚轮缩放</span>
+            <button id="removeImageBtn" class="remove-image" type="button" aria-label="移除当前图片" title="移除当前图片">×</button>
+          </div>
+          <figure class="pixel-preview-wrap">
+            <canvas id="pixelPreviewCanvas" width="576" height="576" aria-label="实时24乘24像素化预览"></canvas>
+            <figcaption>24×24 实时预览</figcaption>
+          </figure>
         </div>
 
         <div class="control-grid">

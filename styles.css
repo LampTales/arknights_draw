@@ -816,7 +816,7 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
 }
 
 .source-panel > .drop-zone,
-.source-panel > .crop-wrap {
+.source-panel > .source-previews {
   grid-column: 1;
   grid-row: 2;
 }
@@ -825,18 +825,47 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   min-height: 220px;
 }
 
-.source-panel > .crop-wrap {
-  width: 220px;
-  height: 220px;
-  justify-self: center;
+.source-panel > .source-previews {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
 }
 
-.source-panel > .crop-wrap #sourceCanvas {
+.source-panel > .source-previews .crop-wrap,
+.source-panel > .source-previews .pixel-preview-wrap {
   width: 220px;
   height: 220px;
 }
 
-.source-panel > .crop-wrap .crop-tip {
+.source-panel > .source-previews #sourceCanvas,
+.source-panel > .source-previews #pixelPreviewCanvas {
+  display: block;
+  width: 220px;
+  height: 220px;
+}
+
+.pixel-preview-wrap {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border: 2px solid #111316;
+  background: #fff;
+}
+
+.pixel-preview-wrap figcaption {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 7px;
+  color: #fff;
+  background: rgba(17, 19, 22, .88);
+  font: 800 10px/1.2 Consolas, monospace;
+  pointer-events: none;
+}
+
+.source-panel > .source-previews .crop-wrap .crop-tip {
   bottom: 10px;
   white-space: nowrap;
 }
@@ -883,19 +912,14 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   .source-panel {
     flex-direction: column;
   }
-  .source-panel > .crop-wrap {
-    width: min(100%, 280px);
-    height: auto;
-    aspect-ratio: 1;
-  }
-  .source-panel > .crop-wrap #sourceCanvas { width: 100%; height: auto; }
+  .source-panel > .source-previews { width: 100%; }
   .source-panel > .control-grid { width: 100%; }
   .workbench-row { gap: 16px; margin-top: 16px; }
 }
 
 /* ── 第二轮紧凑调整：放大画板、收窄色板、简化原图框 ── */
 .source-panel {
-  grid-template-columns: minmax(250px, .52fr) minmax(650px, 1.48fr);
+  grid-template-columns: minmax(460px, .82fr) minmax(600px, 1.18fr);
 }
 
 .source-panel > .control-grid {
@@ -951,7 +975,7 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   box-shadow: none;
 }
 
-.source-panel > .crop-wrap {
+.source-panel > .source-previews .crop-wrap {
   position: relative;
   overflow: hidden;
   border: 2px solid #111316;
@@ -961,14 +985,14 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
   clip-path: none;
 }
 
-.source-panel > .crop-wrap .crop-frame {
+.source-panel > .source-previews .crop-wrap .crop-frame {
   inset: 0;
   border: 0;
   box-shadow: inset 0 0 0 2px rgba(17, 19, 22, .92);
 }
 
-.source-panel > .crop-wrap .crop-frame::before,
-.source-panel > .crop-wrap .crop-frame::after {
+.source-panel > .source-previews .crop-wrap .crop-frame::before,
+.source-panel > .source-previews .crop-wrap .crop-frame::after {
   background: rgba(17, 19, 22, .28);
 }
 
@@ -1007,16 +1031,30 @@ h1 { font-size: clamp(28px, 3.2vw, 44px); }
 }
 
 @media (max-width: 1180px) {
-  .source-panel { grid-template-columns: 230px minmax(0, 1fr); }
+  .source-panel { grid-template-columns: minmax(400px, .9fr) minmax(500px, 1.1fr); }
+  .source-panel > .source-previews { grid-template-columns: repeat(2, minmax(0, 190px)); gap: 10px; }
+  .source-panel > .source-previews .crop-wrap,
+  .source-panel > .source-previews .pixel-preview-wrap,
+  .source-panel > .source-previews #sourceCanvas,
+  .source-panel > .source-previews #pixelPreviewCanvas { width: 190px; height: 190px; }
 }
 
 @media (max-width: 1080px) {
-  .source-panel { grid-template-columns: 230px minmax(0, 1fr); grid-template-rows: auto 220px; }
-  .source-panel > .control-grid { grid-column: 2; grid-row: 2; }
+  .source-panel { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+  .source-panel > .drop-zone,
+  .source-panel > .source-previews { grid-column: 1; grid-row: 2; }
+  .source-panel > .control-grid { grid-column: 1; grid-row: 3; }
 }
 
 @media (max-width: 680px) {
   .source-panel { display: flex; }
+  .source-panel > .source-previews {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .source-panel > .source-previews .crop-wrap,
+  .source-panel > .source-previews .pixel-preview-wrap { width: 100%; height: auto; aspect-ratio: 1; }
+  .source-panel > .source-previews #sourceCanvas,
+  .source-panel > .source-previews #pixelPreviewCanvas { width: 100%; height: auto; }
   .source-panel > .control-grid { grid-template-columns: 1fr 1fr; }
   .source-panel > .control-grid > #generateBtn { grid-column: 1 / -1; }
   .workbench-row .palette-panel { padding-left: 12px; padding-right: 12px; }

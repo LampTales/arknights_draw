@@ -13,9 +13,12 @@
   ];
   const RGB = PALETTE.map(hexToRgb);
   const PALETTE_LAB = RGB.map(([r, g, b]) => rgbToOklab(r, g, b));
+  const PALETTE_CHROMA = PALETTE_LAB.map(([, a, b]) => Math.hypot(a, b));
   const DARK_IDS = [1, 26, 28, 29, 40];
   const GRID = 24;
   const SOURCE_SIZE = 560;
+  const PREVIEW_INTERVAL = 90;
+  const WHEEL_FINAL_DELAY = 140;
   const STORAGE_KEY = "arknights_draw-local-grid-v2";
   const EXPORT_HISTORY_KEY = "arknights_draw-export-history-v2";
   const EXPORT_HISTORY_LIMIT = 50;
@@ -23,7 +26,8 @@
   const $ = id => document.getElementById(id);
   const el = {
     imageInput: $("imageInput"), projectInput: $("projectInput"), dropZone: $("dropZone"),
-    cropWrap: $("cropWrap"), sourceCanvas: $("sourceCanvas"), sourceMeta: $("sourceMeta"),
+    sourcePreviews: $("sourcePreviews"), cropWrap: $("cropWrap"), sourceCanvas: $("sourceCanvas"),
+    pixelPreviewCanvas: $("pixelPreviewCanvas"), sourceMeta: $("sourceMeta"),
     removeImageBtn: $("removeImageBtn"),
     zoomRange: $("zoomRange"), zoomOut: $("zoomOut"), resetCropBtn: $("resetCropBtn"),
     fitSubjectBtn: $("fitSubjectBtn"), modeSelect: $("modeSelect"),
@@ -64,10 +68,17 @@
   };
 
   const sourceCtx = el.sourceCanvas.getContext("2d", { willReadFrequently: true });
+  const pixelPreviewCtx = el.pixelPreviewCanvas.getContext("2d");
   const gridCtx = el.gridCanvas.getContext("2d");
   const overviewCtx = el.overviewCanvas.getContext("2d");
   let gridResizeObserver = null;
   let exportHistory = [];
+  let previewFrame = 0;
+  let previewTimer = 0;
+  let previewLastRun = -Infinity;
+  let previewRevision = 0;
+  let previewRenderedRevision = -1;
+  let wheelFinalTimer = 0;
 
   function hexToRgb(hex) {
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
@@ -93,17 +104,17 @@
   function nearestPaletteId(r, g, b) {
     const [l, a, b2] = rgbToOklab(r, g, b);
     const chroma = Math.hypot(a, b2);
-    const hue = Math.atan2(b2, a);
     let best = 0;
     let bestDistance = Infinity;
     for (let i = 0; i < PALETTE_LAB.length; i++) {
       const [pl, pa, pb] = PALETTE_LAB[i];
-      const pc = Math.hypot(pa, pb);
-      const ph = Math.atan2(pb, pa);
-      let dh = hue - ph;
-      dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-      const hueTerm = 2 * Math.sqrt(chroma * pc) * Math.sin(dh / 2);
-      const distance = 0.65 * (l - pl) ** 2 + (chroma - pc) ** 2 + 1.7 * hueTerm ** 2;
+      const pc = PALETTE_CHROMA[i];
+      let hueTermSquared = 0;
+      if (chroma > 1e-12 && pc > 1e-12) {
+        const cosine = Math.max(-1, Math.min(1, (a * pa + b2 * pb) / (chroma * pc)));
+        hueTermSquared = 2 * chroma * pc * (1 - cosine);
+      }
+      const distance = 0.65 * (l - pl) ** 2 + (chroma - pc) ** 2 + 1.7 * hueTermSquared;
       if (distance < bestDistance) {
         bestDistance = distance;
         best = i;
@@ -243,6 +254,105 @@
   function drawSource() {
     sourceCtx.clearRect(0, 0, SOURCE_SIZE, SOURCE_SIZE);
     drawImageTo(sourceCtx, SOURCE_SIZE, SOURCE_SIZE);
+    schedulePixelPreview();
+  }
+
+  function analyzeImageGrid() {
+    const block = 8;
+    const sampleSize = GRID * block;
+    const sample = document.createElement("canvas");
+    sample.width = sampleSize;
+    sample.height = sampleSize;
+    const ctx = sample.getContext("2d", { willReadFrequently: true });
+    drawImageTo(ctx, sampleSize, sampleSize);
+    const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+    const result = new Uint8Array(GRID * GRID);
+    const mode = el.modeSelect.value;
+
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        const counts = new Uint16Array(41);
+        let sumR = 0, sumG = 0, sumB = 0;
+        for (let y = 0; y < block; y++) {
+          for (let x = 0; x < block; x++) {
+            const pixel = ((row * block + y) * sampleSize + col * block + x) * 4;
+            const adjusted = adjustedRgb(data[pixel], data[pixel + 1], data[pixel + 2]);
+            sumR += adjusted[0]; sumG += adjusted[1]; sumB += adjusted[2];
+            counts[nearestPaletteId(adjusted[0], adjusted[1], adjusted[2])]++;
+          }
+        }
+        const total = block * block;
+        const averageId = nearestPaletteId(sumR / total, sumG / total, sumB / total);
+        let dominantId = 1;
+        for (let id = 2; id <= 40; id++) if (counts[id] > counts[dominantId]) dominantId = id;
+        let chosen = averageId;
+        if (mode === "dominant") {
+          chosen = dominantId;
+        } else if (mode === "hybrid") {
+          let darkTotal = 0;
+          let darkId = DARK_IDS[0];
+          DARK_IDS.forEach(id => {
+            darkTotal += counts[id];
+            if (counts[id] > counts[darkId]) darkId = id;
+          });
+          if (darkTotal / total >= 0.18) chosen = darkId;
+          else if (counts[dominantId] / total >= 0.36) chosen = dominantId;
+        }
+        result[row * GRID + col] = chosen;
+      }
+    }
+    return result;
+  }
+
+  function drawPixelPreview(result) {
+    const size = el.pixelPreviewCanvas.width;
+    const cell = size / GRID;
+    pixelPreviewCtx.imageSmoothingEnabled = false;
+    pixelPreviewCtx.clearRect(0, 0, size, size);
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        pixelPreviewCtx.fillStyle = PALETTE[result[row * GRID + col] - 1];
+        pixelPreviewCtx.fillRect(col * cell, row * cell, cell, cell);
+      }
+    }
+  }
+
+  function cancelScheduledPixelPreview() {
+    if (previewFrame) window.cancelAnimationFrame(previewFrame);
+    if (previewTimer) window.clearTimeout(previewTimer);
+    previewFrame = 0;
+    previewTimer = 0;
+  }
+
+  function renderPixelPreview() {
+    previewFrame = 0;
+    previewTimer = 0;
+    if (!state.image || previewRenderedRevision === previewRevision) return;
+    const revision = previewRevision;
+    previewLastRun = performance.now();
+    drawPixelPreview(analyzeImageGrid());
+    previewRenderedRevision = revision;
+  }
+
+  function schedulePixelPreview() {
+    if (!state.image) return;
+    previewRevision++;
+    if (previewFrame || previewTimer) return;
+    const remaining = PREVIEW_INTERVAL - (performance.now() - previewLastRun);
+    if (remaining <= 0) {
+      previewFrame = window.requestAnimationFrame(renderPixelPreview);
+    } else {
+      previewTimer = window.setTimeout(() => {
+        previewTimer = 0;
+        previewFrame = window.requestAnimationFrame(renderPixelPreview);
+      }, remaining);
+    }
+  }
+
+  function forcePixelPreview() {
+    if (!state.image || previewRenderedRevision === previewRevision) return;
+    cancelScheduledPixelPreview();
+    renderPixelPreview();
   }
 
   function resetCrop(full = false) {
@@ -270,7 +380,7 @@
       el.fileName.value = file.name.replace(/\.[^.]+$/, "") || "arknights_draw";
       el.sourceMeta.textContent = `${image.width} × ${image.height}`;
       el.dropZone.hidden = true;
-      el.cropWrap.hidden = false;
+      el.sourcePreviews.hidden = false;
       el.generateBtn.disabled = false;
       resetCrop(false);
       setStatus("图片已载入。拖动和缩放确定构图，然后生成初稿。 ");
@@ -283,6 +393,9 @@
   }
 
   function removeSourceImage() {
+    cancelScheduledPixelPreview();
+    if (wheelFinalTimer) window.clearTimeout(wheelFinalTimer);
+    wheelFinalTimer = 0;
     if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
     state.imageUrl = "";
     state.image = null;
@@ -293,12 +406,13 @@
     state.fitFull = false;
     el.imageInput.value = "";
     el.sourceMeta.textContent = "尚未选择图片";
-    el.cropWrap.hidden = true;
+    el.sourcePreviews.hidden = true;
     el.dropZone.hidden = false;
     el.generateBtn.disabled = true;
     el.zoomRange.value = "100";
     syncOutputs();
     sourceCtx.clearRect(0, 0, SOURCE_SIZE, SOURCE_SIZE);
+    pixelPreviewCtx.clearRect(0, 0, el.pixelPreviewCanvas.width, el.pixelPreviewCanvas.height);
     setStatus("已移除原图，可以上传新图片；当前24×24编辑结果已保留。 ");
   }
 
@@ -308,49 +422,7 @@
     el.generateBtn.disabled = true;
     window.setTimeout(() => {
       try {
-        const block = 8;
-        const sampleSize = GRID * block;
-        const sample = document.createElement("canvas");
-        sample.width = sampleSize;
-        sample.height = sampleSize;
-        const ctx = sample.getContext("2d", { willReadFrequently: true });
-        drawImageTo(ctx, sampleSize, sampleSize);
-        const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
-        const result = new Uint8Array(GRID * GRID);
-        const mode = el.modeSelect.value;
-
-        for (let row = 0; row < GRID; row++) {
-          for (let col = 0; col < GRID; col++) {
-            const counts = new Uint16Array(41);
-            let sumR = 0, sumG = 0, sumB = 0;
-            for (let y = 0; y < block; y++) {
-              for (let x = 0; x < block; x++) {
-                const pixel = ((row * block + y) * sampleSize + col * block + x) * 4;
-                const adjusted = adjustedRgb(data[pixel], data[pixel + 1], data[pixel + 2]);
-                sumR += adjusted[0]; sumG += adjusted[1]; sumB += adjusted[2];
-                counts[nearestPaletteId(adjusted[0], adjusted[1], adjusted[2])]++;
-              }
-            }
-            const total = block * block;
-            const averageId = nearestPaletteId(sumR / total, sumG / total, sumB / total);
-            let dominantId = 1;
-            for (let id = 2; id <= 40; id++) if (counts[id] > counts[dominantId]) dominantId = id;
-            let chosen = averageId;
-            if (mode === "dominant") {
-              chosen = dominantId;
-            } else if (mode === "hybrid") {
-              let darkTotal = 0;
-              let darkId = DARK_IDS[0];
-              DARK_IDS.forEach(id => {
-                darkTotal += counts[id];
-                if (counts[id] > counts[darkId]) darkId = id;
-              });
-              if (darkTotal / total >= 0.18) chosen = darkId;
-              else if (counts[dominantId] / total >= 0.36) chosen = dominantId;
-            }
-            result[row * GRID + col] = chosen;
-          }
-        }
+        const result = analyzeImageGrid();
         commitGrid(result);
         setStatus(`初稿已生成，共使用 ${new Set(result).size} 种固定色。现在可以逐格修正。`);
       } catch (error) {
@@ -1027,9 +1099,14 @@
       state.panY = state.cropDrag.panY + (event.clientY - state.cropDrag.y) * SOURCE_SIZE / rect.height;
       drawSource();
     });
-    const stopCropDrag = () => { state.cropDrag = null; el.sourceCanvas.classList.remove("dragging"); };
+    const stopCropDrag = () => {
+      state.cropDrag = null;
+      el.sourceCanvas.classList.remove("dragging");
+      forcePixelPreview();
+    };
     el.sourceCanvas.addEventListener("pointerup", stopCropDrag);
     el.sourceCanvas.addEventListener("pointercancel", stopCropDrag);
+    el.sourceCanvas.addEventListener("lostpointercapture", stopCropDrag);
     el.sourceCanvas.addEventListener("wheel", event => {
       event.preventDefault();
       const next = Math.max(100, Math.min(400, Number(el.zoomRange.value) + (event.deltaY < 0 ? 10 : -10)));
@@ -1037,13 +1114,22 @@
       state.zoom = next / 100;
       syncOutputs();
       drawSource();
+      if (wheelFinalTimer) window.clearTimeout(wheelFinalTimer);
+      wheelFinalTimer = window.setTimeout(() => {
+        wheelFinalTimer = 0;
+        forcePixelPreview();
+      }, WHEEL_FINAL_DELAY);
     }, { passive: false });
 
     el.zoomRange.addEventListener("input", () => { state.zoom = Number(el.zoomRange.value) / 100; syncOutputs(); drawSource(); });
-    el.contrastRange.addEventListener("input", syncOutputs);
-    el.saturationRange.addEventListener("input", syncOutputs);
-    el.resetCropBtn.addEventListener("click", () => resetCrop(false));
-    el.fitSubjectBtn.addEventListener("click", () => resetCrop(!state.fitFull));
+    el.zoomRange.addEventListener("change", forcePixelPreview);
+    el.contrastRange.addEventListener("input", () => { syncOutputs(); schedulePixelPreview(); });
+    el.contrastRange.addEventListener("change", forcePixelPreview);
+    el.saturationRange.addEventListener("input", () => { syncOutputs(); schedulePixelPreview(); });
+    el.saturationRange.addEventListener("change", forcePixelPreview);
+    el.modeSelect.addEventListener("change", () => { schedulePixelPreview(); forcePixelPreview(); });
+    el.resetCropBtn.addEventListener("click", () => { resetCrop(false); forcePixelPreview(); });
+    el.fitSubjectBtn.addEventListener("click", () => { resetCrop(!state.fitFull); forcePixelPreview(); });
     el.removeImageBtn.addEventListener("click", event => { event.stopPropagation(); removeSourceImage(); });
     el.generateBtn.addEventListener("click", buildGridFromImage);
 
