@@ -273,8 +273,8 @@
     const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
     const result = new Uint8Array(GRID * GRID);
     const mode = el.modeSelect.value;
-    const darkThreshold = Number(el.darkThresholdRange.value) / 100;
-    const dominantThreshold = Number(el.dominantThresholdRange.value) / 100;
+    const darkThreshold = (100 - Number(el.darkThresholdRange.value)) / 100;
+    const dominantThreshold = (100 - Number(el.dominantThresholdRange.value)) / 100;
 
     for (let row = 0; row < GRID; row++) {
       for (let col = 0; col < GRID; col++) {
@@ -840,8 +840,8 @@
         mode: el.modeSelect.value,
         contrast: Number(el.contrastRange.value),
         saturation: Number(el.saturationRange.value),
-        darkThreshold: Number(el.darkThresholdRange.value),
-        dominantThreshold: Number(el.dominantThresholdRange.value),
+        darkThreshold: 100 - Number(el.darkThresholdRange.value),
+        dominantThreshold: 100 - Number(el.dominantThresholdRange.value),
         showNumbers: el.showNumbers.checked,
         showGrid: el.showGrid.checked,
         showOverview: el.showOverview.checked
@@ -866,12 +866,12 @@
       if (["hybrid", "dominant", "average"].includes(project.settings.mode)) el.modeSelect.value = project.settings.mode;
       if (Number.isFinite(project.settings.contrast)) el.contrastRange.value = String(project.settings.contrast);
       if (Number.isFinite(project.settings.saturation)) el.saturationRange.value = String(project.settings.saturation);
-      el.darkThresholdRange.value = String(Number.isFinite(project.settings.darkThreshold)
+      el.darkThresholdRange.value = String(100 - (Number.isFinite(project.settings.darkThreshold)
         ? Math.max(0, Math.min(100, project.settings.darkThreshold))
-        : DEFAULT_DARK_THRESHOLD);
-      el.dominantThresholdRange.value = String(Number.isFinite(project.settings.dominantThreshold)
+        : DEFAULT_DARK_THRESHOLD));
+      el.dominantThresholdRange.value = String(100 - (Number.isFinite(project.settings.dominantThreshold)
         ? Math.max(0, Math.min(100, project.settings.dominantThreshold))
-        : DEFAULT_DOMINANT_THRESHOLD);
+        : DEFAULT_DOMINANT_THRESHOLD));
       el.showNumbers.checked = project.settings.showNumbers !== false;
       el.showGrid.checked = project.settings.showGrid !== false;
       el.showOverview.checked = project.settings.showOverview !== false;
@@ -1097,8 +1097,8 @@
   function resetImageParameters() {
     el.contrastRange.value = "0";
     el.saturationRange.value = "0";
-    el.darkThresholdRange.value = String(DEFAULT_DARK_THRESHOLD);
-    el.dominantThresholdRange.value = String(DEFAULT_DOMINANT_THRESHOLD);
+    el.darkThresholdRange.value = String(100 - DEFAULT_DARK_THRESHOLD);
+    el.dominantThresholdRange.value = String(100 - DEFAULT_DOMINANT_THRESHOLD);
     syncOutputs();
     schedulePixelPreview();
     forcePixelPreview();
